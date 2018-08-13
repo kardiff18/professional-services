@@ -1,3 +1,6 @@
+'''
+copyright..
+'''
 import slots_timeline
 import unittest
 import pandas as pd
