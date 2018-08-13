@@ -12,13 +12,16 @@ The solution consists of two main components:
 * Enable billing on the account.
 * The solution uses datastore to save internal metrics. You will need to manually go to datastore in https://console.cloud.google.com/datastore and create the database once.
 * When you've done this take this entire project (folder) and push it to your own Cloud Source Repository within the project you just created.
-* Now create a build trigger in Container Builder. This will build the container with python code does the periodic job queries via api and exports the query plan explanation timeline.
+* Now create a build trigger in Container Builder. This will build the container with python code that does the periodic job queries via api and exports the query plan explanation timeline.
 * When this is done, verify that you have an image in your GCR, called slots_deficits.
 * You will need to create datastore from the UI.
 * Initialize gcloud with **my-project-id**
 
 ### Service account & IAM permissioning
 We will need to create two custom IAM roles; One for org level and one for project level.
+
+Q) Why do we need both roles ?
+TBD:
 
 * Let's call org level custom role **slots-deficit-org-role** and assign the following permissions:
 ```
@@ -31,7 +34,7 @@ Resourcemanager.projects.list```
 These roles are needed in order to get BigQuery jobs information from all the projects, not just the project where this solution will reside.
 
 
-* Let’s call project level role **slots-deficit-project-role** and assign the following permissions:
+* Let’s call project level role **slots-deficit-project-role** and assign the following permissions in the **my-project-id** only
 ```
 storage.buckets.get
 storage.buckets.list
@@ -40,13 +43,13 @@ storage.objects.list```
 These permissions are needed in order for kubernetes to fetch the images from GCE registry. The images are stored in GCS.
 
 Now create a service account, called **slots-deficits-log-service**.
-Give that service account the following project level role:
+Give that service account the following project level role in **my-project-id** :
 ```
 Slots-deficit-project-role
 BigQuery Data Owner
 Project Editor```
 
-Now give it the following org level role (you will need to select the org from projectt selection and add a new user with the slots-deficits-log-service’s email):
+Now give it the following org level role (you will need to select the org from project selection and add a new user with the slots-deficits-log-service’s email):
 
 ```
 Project Viewer
@@ -56,6 +59,7 @@ slots-deficit-org-role```
 Now as most of the scaffolding is done it's time to run the installation script (scripts/install.sh). This script will:
 
 1. Create a dataset in your project.
+#Any control on dataset name ?
 2. Create relevant empty tables and views.
 3. Create a 1 (n1-standard-2) node multi-regional GKE cluster inside your project.
 4. Deploy slots-deficit-one-time and run this container once.
@@ -65,7 +69,7 @@ The script will need two variables: Project id and location where this data will
 
 To run the script by providing the organization id, project id and dataset name like this:
 ```
-./install.sh  -p slots-deficit -l US
+./install.sh  -p slots-deficit -l US -d <datasetname> 
 ```
 
 
