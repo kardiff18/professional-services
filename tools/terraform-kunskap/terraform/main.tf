@@ -4,18 +4,26 @@ provider "google" {
   zone    = "${var.zone}"
 }
 
-# Zip up folder
-data "archive_file" "kunskapfiles" {
-  type = "zip"
-  output_path = "kunskap.zip"
-  source_dir = "kunskap"
-}
-
-
 provider "google-beta" {
   project = "${var.projectid}"
   region = "${var.region}"
   zone = "${var.zone}"
+}
+
+# Zip up Kunskap Source Code folder
+data "archive_file" "kunskapfiles" {
+  type = "zip"
+  output_path = "kunskap.zip"
+  source_dir = "source"
+}
+
+resource "google_project_services" "project" {
+  project = "${var.projectid}"
+  services = ["cloudbilling.googleapis.com",
+              "cloudscheduler.googleapis.com",
+              "pubsub.googleapis.com",
+              "cloudfunctions.googleapis.com",
+              "bigquery-json.googleapis.com"]
 }
 
 resource "google_storage_bucket" "bucket" {
@@ -46,6 +54,7 @@ resource "google_cloudfunctions_function" "function" {
     event_type = "google.pubsub.topic.publish"
     resource = "${var.topic}"
   }
+  service_account_email = locals.service_account
 }
 
 resource "google_cloud_scheduler_job" "job"{
@@ -54,6 +63,6 @@ resource "google_cloud_scheduler_job" "job"{
   schedule = "${var.frequency}"
   pubsub_target {
     topic_name = "projects/${var.projectid}/topics/${var.topic}"
-    data = "abcd"
+    data = ""
   }
 }

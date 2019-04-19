@@ -38,27 +38,14 @@ gcloud components update
 gcloud projects create [PROJECT_ID]
 ````
 
-where [PROJECT_ID] is the ID for the project that you want to create.
+where `[PROJECT_ID]` is the ID for the project that you want to create.
 
 2. Configure gcloud to use the project that you created
 
 ````
 gcloud config set project [PROJECT_ID]
 ````
-where [PROJECT_ID] is the ID that you created in the previous step.
-
-
-<h3>Open the GCP Console and enable the following:</h3>
-
-1. [Enable billing](http://console.cloud.google.com/billing/?_ga=2.49090150.-1918546401.1542306879)
-
-2. [Enable the Cloud Scheduler API](http://console.cloud.google.com/apis/library/cloudscheduler.googleapis.com?_ga=2.212868180.-1918546401.1542306879)
-
-3. [Enable the Cloud Pub/Sub API](https://console.cloud.google.com/flows/enableapi?apiid=pubsub)
-
-4. [Enable the Cloud Functions API](https://console.cloud.google.com/flows/enableapi?apiid=cloudfunctions)
-
-5. [Enable the BigQuery API](https://console.cloud.google.com/flows/enableapi?apiid=bigquery)
+where `[PROJECT_ID]` is the ID that you created in the previous step.
 
 
 <h3>Set up BigQuery Permissions</h3>
@@ -68,7 +55,7 @@ where [PROJECT_ID] is the ID that you created in the previous step.
 ````
 gcloud iam service-accounts list
 ````
-The output should display an email in the form of [PROJECT_ID]@appspot.gserviceaccount.com. Copy this email for the next step.
+The output should display an email in the form of `[PROJECT_ID]`@appspot.gserviceaccount.com. Copy this email for the next step.
 
 2. In the BigQuery UI, hover over the plus icon for your <b>billing</b> dataset. 
 
@@ -83,63 +70,120 @@ The output should display an email in the form of [PROJECT_ID]@appspot.gservicea
 7. In the pop-up, enter the service account email from step 1. Give it permission <b>"Can Edit".</b>
 
 
-<h3>Edit Config Variables</h3>
+<h3>Edit Python Config Variables</h3>
 
-1. Clone this repo and open config.py in your chosen IDE.
+1. Clone this repo and open source/config.py in your chosen IDE.
 
 2. Look at the top of the file after the comment about edits:
 
 ````python
-# EDIT THESE WITH YOUR OWN DATASET/TABLES
-billing_project_id = 'project_id'
-billing_dataset_id = 'billing_dataset'
-billing_table_name = 'billing_data'
-output_dataset_id = 'output_dataset'
-output_table_name = 'transformed_table'
-# You can leave this unless you renamed the file yourself.
-sql_file_path = 'cud_sud_attribution_query.sql'
+config_vars = {
+    # EDIT THESE WITH YOUR OWN DATASET/TABLES
+    'billing_project_id': 'billing_project',
+    'billing_dataset_id': 'billing_dataset',
+    'billing_table_name': 'billing_table',
+    'output_dataset_id': 'output_dataset',
+    'output_table_name': 'output_table',
+    'audit_logs_dataset_id': 'audit_logs_dataset',
 
+    # Update depending on if you are using CUD/SUD Attribution and/or BQ
+    'create_output_table_sql_file_path': 'cud_sud_attribution_query_with_bq_attribution.sql',
 
-# There are two slightly different allocation methods that affect how the Commitment charge is allocated:
+    # Update the view name if you would like to rename exported view differently
+    'audit_logs_view_name': 'bq_proj_usage_table',
 
-# Method 1: Utilized commitment charges are allocated to cost buckets proportionally to buckets share of 
-# total eligible VM usage during the time increment (P_usage_percentage).
-# any untilized commitment cost remains unallocated (BA_unutilized_commitment_cost).
+    # There are two slightly different allocation methods that affect how the
+    # Commitment charge is allocated:
 
-# Method 2: All commitment charges are allocated to buckets (P_method_2_CUD_commitment_cost) proportionally 
-# to the buckets share of total eligible VM usage during the time increment (P_usage_percentage). All 
-# commitment cost is allocated into the buckets proportionally to the CUD credits that they consumed, even 
-# if the commitment is not fully utilized.
-allocation_method = 'P_method_2_commitment_cost'
+    # Method 1: Only UTILIZED commitment charges are allocated to projects.
+    # (P_method_1_CUD_commitment_cost): Utilized CUD commitment charges are
+    # proportionally allocated to each project based on its share of total
+    # eligible VM usage during the time increment (P_usage_percentage). Any
+    # unutilized commitment cost remains unallocated
+    # (BA_unutilized_commitment_cost) and is allocated to the shell project.
+
+    # Method 2: ALL commitment charges are allocated to projects (regardless of
+    # utilization). (P_method_2_CUD_commitment_cost): All CUD commitment charges
+    # are proportionally allocated to each project based on its share of total
+    # eligible VM usage during the time increment (P_usage_percentage). All
+    # commitment cost is allocated into the projects proportionally based on the
+    # CUD credits that they consumed, even if the commitment is not fully
+    # utilized.
+    'allocation_method': 'P_method_2_commitment_cost',
+
+    # Do not edit unless you renamed this file yourself.
+    'create_view_sql_path': 'create_bq_usage_view_from_auditlogs.sql'
+}
 ````
 
-Change the values of billing_project_id, billing_dataset_id, billing_table_name, output_dataset_id, and output_table_name to your project's respective id, datasets, and tables in BigQuery. The output table will be created in this project, so you can choose any name that you would like. The remaining variables all must be changed for the values that already exist in your project.
+Change the values of billing_project_id, billing_dataset_id, billing_table_name, output_dataset_id, output_table_name, and audit_logs_dataset_id to your project's respective id, datasets, and tables in BigQuery. 
+The output table will be created in this project, so you can choose any name that you would like. 
+You must also update the output_table_sql_file_path based on which type of attribution that you would like to do: 
+  - If you only need CUD/SUD attribution, select “cud_sud_attribution_query.sql”
+  - If you only need BQ attribution, select “bq_attribution_query.sql”
+  - If you need both CUD/SUD and BQ attribution, select “cud_sud_attribution_query_with_bq_attribution.sql”
+For allocation_method, either “P_method_1_commitment_cost” or “P_method_2_commitment_cost”, based on the preferred allocation method as described in source/config.py. 
+Default is P_method_2_commitment_cost. Method 2 is the safest.
 
 
-<h3>Set up Cloud Functions:</h3>
+<h3>Edit Terraform Config Variables</h3>
+```
+variable projectid {
+  default = "projectname"
+}
 
-1. In your terminal window, cd into the directory where you cloned the repository.
+variable region {
+  default = "europe-west1"
+}
 
-2. Enter the following in the terminal:
-````
-gcloud functions deploy [FUNCTION_NAME] --entry-point main --runtime python37 --trigger-resource [TOPIC_NAME] --trigger-event google.pubsub.topic.publish --timeout 540s
-````
-where [FUNCTION_NAME] is the name that you want to give the function and [TOPIC_NAME] is the name of the topic that you want to create in Pub/Sub.
+variable zone {
+  default = "europe-west1-c"
+}
+
+variable jobid {
+  default = "terraformjob"
+}
+
+variable frequency {
+  default = "0 */12 * * *"
+}
+
+variable topic {
+  default = "terraform-topic"
+}
+
+variable functioname {
+  default = "terraform-fn"
+}
+
+variable bucketname {
+  default = "kunskap-terraform-bucket"
+}
+
+locals {
+  service_account = "${var.projectid}@appspot.gserviceaccount.com"
+}
+```
+- frequency: This is how often your attribution will occur, in UNIX cron time.
+- bucketname: This is the name of the GCS bucket where the compressed source code for the Cloud Function will reside. 
+<b>You must rename this to a globally unique name, or else it will fail.</b> Suggested name: ‘projectid-kunskap-bucket’.
+- service_account: This is an optional variable. It defaults to using the default App Engine service account. If you want to use a custom service account
+to perform your queries on the BQ tables, enter it here.
+
+<h3>Install Terraform:</h3>
+To use Terraform, it should first be installed on your machine. It is distributed as a binary package and instructions to installation instructions can be found [here](https://learn.hashicorp.com/terraform/getting-started/install).
 
 
-<h3>Set up Cloud Scheduler:</h3>
+<h3>Create the GCP Resources:</h3>
+Open up a terminal window, and cd into the directory where you saved the root of this repository. Enter:
 
-1. Open a terminal window. Make sure that you are still in the kunskap directory.
 
-2. In the window, enter:
+1. cd terraform
+2. terraform init
+3. terraform plan
+4. terraform apply
+5. yes
 
-````
-gcloud beta scheduler jobs create pubsub [JOB] --schedule [SCHEDULE] --topic [TOPIC_NAME] --message-body [MESSAGE_BODY]
-````
-where [JOB] is a unique name for a job, [SCHEDULE] is the frequency for the job in UNIX cron, such as "0 */12 * * *" to run every 12hours, [TOPIC_NAME] is the name of the topic created in the step above when you deployed the Cloud Function, and [MESSAGE_BODY] is any string. An example command would be: 
-````
-gcloud beta scheduler jobs create pubsub daily_job --schedule "0 */12 * * *" --topic cron-topic --message-body "bi-daily job"
-````
 
 <h3>Run the job:</h3>
 You can test the workflow above by running the project now, instead of waiting for the scheduled UNIX time. To do this:
@@ -150,4 +194,4 @@ You can test the workflow above by running the project now, instead of waiting f
 
 3. Open up BigQuery in the console.
 
-4. Under your output dataset, look for your [output_table_name], this will contain the data.
+4. Under your output dataset, look for your `[output_table_name]`, this will contain the data.

@@ -8,6 +8,7 @@
  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  See the License for the specific language governing permissions and
  limitations under the License.
+
 */
 CREATE TEMP FUNCTION
   commitmentSKUToNegationSKU(sku_desc STRING)
@@ -41,7 +42,10 @@ CREATE TEMP FUNCTION
         SELECT
          *
         FROM
-         `${billing_table}`
+         `{billing_project_id}.{billing_dataset_id}.{billing_table_name}`
+        WHERE
+          CAST(DATETIME(usage_start_time,
+            "America/Los_Angeles") AS DATE) >= "2018-10-01"
     ),
     billing_id_table AS (
     SELECT
@@ -63,6 +67,7 @@ CREATE TEMP FUNCTION
       service.id AS service_id,
       service.description AS service_description,
       project.id AS project_id,
+      project.name AS project_name,
       labels_1.value AS label_1_value,
       labels_2.value AS label_2_value,
       usage.unit AS unit,
@@ -83,8 +88,8 @@ CREATE TEMP FUNCTION
     WHERE
       service.description = "Compute Engine"
       AND (
-       FALSE OR (LOWER(sku.description) LIKE "%instance%"
-          OR LOWER(sku.description) LIKE "% intel %")
+       FALSE
+        OR (LOWER(sku.description) LIKE "%instance%" OR LOWER(sku.description) LIKE "% intel %")
         OR LOWER(sku.description) LIKE "%memory optimized core%"
         OR LOWER(sku.description) LIKE "%memory optimized ram%"
         OR LOWER(sku.description) LIKE "%commitment%")
@@ -145,7 +150,8 @@ CREATE TEMP FUNCTION
         OR LOWER(sku_description) LIKE "%micro%"
         OR LOWER(sku_description) LIKE "%small%"
         OR LOWER(sku_description) LIKE "%extended%" ) THEN "Ineligible Usage"
-        WHEN ( (LOWER(sku_description) LIKE "%instance%" OR LOWER(sku_description) LIKE "% intel %") OR LOWER(sku_description) LIKE "%core%" OR LOWER(sku_description) LIKE "%ram%" ) THEN "Eligible Usage"
+        WHEN ( (LOWER(sku_description) LIKE "%instance%" OR LOWER(sku_description) LIKE "% intel %")
+          OR LOWER(sku_description) LIKE "%core%" OR LOWER(sku_description) LIKE "%ram%" ) THEN "Eligible Usage"
         ELSE NULL
       END AS usage_type,
       CASE
@@ -195,6 +201,7 @@ CREATE TEMP FUNCTION
         unit_type,
         unit,
         project_id,
+        project_name,
         label_1_value,
         label_2_value,
         SUM(usage_amount) AS usage_amount,
@@ -220,7 +227,8 @@ CREATE TEMP FUNCTION
         9,
         10,
         11,
-        14)
+        12,
+        15)
     UNION ALL (
         -- Second query pulls out CUD and SUD Credit usage and cost. This is done in a separate
         -- SELECT and unioned because if we unnest the repeated field for credit types, we can
@@ -235,6 +243,7 @@ CREATE TEMP FUNCTION
         unit_type,
         unit,
         project_id,
+        project_name,
         label_1_value,
         label_2_value,
         SUM(usage_amount) AS usage_amount,
@@ -255,6 +264,7 @@ CREATE TEMP FUNCTION
           unit_type,
           unit,
           project_id,
+          project_name,
           label_1_value,
           label_2_value,
           unit_price,
@@ -300,7 +310,8 @@ CREATE TEMP FUNCTION
           10,
           11,
           12,
-          15)
+          13,
+          16)
       GROUP BY
         1,
         2,
@@ -313,7 +324,8 @@ CREATE TEMP FUNCTION
         9,
         10,
         11,
-        14) ),
+        12,
+        15) ),
     -- project_credit_breakout sums usage amount and cost
     -- across the cost organization schema of interest: labels within projects
     project_label_credit_breakout AS (
@@ -323,6 +335,7 @@ CREATE TEMP FUNCTION
       service_description,
       region,
       project_id,
+      project_name,
       label_1_value,
       label_2_value,
       cud_type,
@@ -364,7 +377,8 @@ CREATE TEMP FUNCTION
       7,
       8,
       9,
-      10),
+      10,
+      11),
     -- BA_credit_breakout sums usage amount and cost
     -- across the entire Billing Account within each unique CUD scope <location, unit_type, cud_type>
     -- so that we know what the total cost is that we need to attribute across each project/label
@@ -413,6 +427,7 @@ CREATE TEMP FUNCTION
       p.unit_type,
       p.cud_type,
       p.project_id,
+      p.project_name,
       p.label_1_value,
       p.label_2_value,
       BA_commitment_usage_amount,
@@ -527,7 +542,7 @@ CREATE TEMP FUNCTION
       TIMESTAMP(usage_date) AS usage_start_time,
       TIMESTAMP_ADD(TIMESTAMP(usage_date), INTERVAL ((3600*23)+3599) SECOND) AS usage_end_time,
       STRUCT ( project_id AS id,
-        "" AS name,
+        project_name AS name,
         ARRAY<STRUCT<key STRING,
         value STRING>> [] AS labels,
         "" AS ancestry_numbers) AS project,
@@ -540,13 +555,13 @@ CREATE TEMP FUNCTION
         region AS region,
         "" AS zone ) AS location,
       CURRENT_TIMESTAMP() AS export_time,
-      ${allocation_method} AS cost,
+      {allocation_method} AS cost,
       "USD" AS currency,
       1.0 AS currency_conversion_rate,
       STRUCT ( 0.0 AS amount,
-        "TODO" AS unit,
+        IF(LOWER(unit_type) LIKE "ram", "byte-seconds", "gibibyte hour") AS unit,
         0.0 AS amount_in_pricing_units,
-        "TODO" AS pricing_unit ) AS usage,
+        IF(LOWER(unit_type) LIKE "ram", "seconds", "hour") AS pricing_unit ) AS usage,
       ARRAY<STRUCT<name STRING,
       amount FLOAT64>> [] AS credits,
       STRUCT ( FORMAT_DATE("%Y%m", usage_date) AS month) AS invoice,
@@ -555,7 +570,7 @@ CREATE TEMP FUNCTION
       final_data,
       billing_id_table AS b
     WHERE
-      ${allocation_method} <> 0),
+      {allocation_method} <> 0),
     correct_cud_credits AS (
     SELECT
       b.billing_account_id AS billing_account_id,
@@ -570,7 +585,7 @@ CREATE TEMP FUNCTION
       TIMESTAMP(usage_date) AS usage_start_time,
       TIMESTAMP_ADD(TIMESTAMP(usage_date), INTERVAL ((3600*23)+3599) SECOND) AS usage_end_time,
       STRUCT ( project_id AS id,
-        "" AS name,
+        project_name AS name,
         ARRAY<STRUCT<key STRING,
         value STRING>> [] AS labels,
         "" AS ancestry_numbers) AS project,
@@ -587,9 +602,9 @@ CREATE TEMP FUNCTION
       "USD" AS currency,
       1.0 AS currency_conversion_rate,
       STRUCT ( 0.0 AS amount,
-        "TODO" AS unit,
+        IF(LOWER(unit_type) LIKE "ram", "byte-seconds", "gibibyte hour") AS unit,
         0.0 AS amount_in_pricing_units,
-        "TODO" AS pricing_unit ) AS usage,
+       IF(LOWER(unit_type) LIKE "ram", "seconds", "hour") AS pricing_unit ) AS usage,
       ARRAY<STRUCT<name STRING,
       amount FLOAT64>> [(IF(LOWER(unit_type) LIKE "ram",
           "Committed Usage Discount: RAM",
@@ -612,7 +627,7 @@ CREATE TEMP FUNCTION
       TIMESTAMP(usage_date) AS usage_start_time,
       TIMESTAMP_ADD(TIMESTAMP(usage_date), INTERVAL ((3600*23)+3599) SECOND) AS usage_end_time,
       STRUCT ( project_id AS id,
-        "" AS name,
+        project_name AS name,
         ARRAY<STRUCT<key STRING,
         value STRING>> [] AS labels,
         "" AS ancestry_numbers)
@@ -630,9 +645,9 @@ CREATE TEMP FUNCTION
       "USD" AS currency,
       1.0 AS currency_conversion_rate,
       STRUCT ( 0.0 AS amount,
-        "TODO" AS unit,
+         IF(LOWER(unit_type) LIKE "ram", "byte-seconds", "gibibyte hour") AS unit,
         0.0 AS amount_in_pricing_units,
-        "TODO" AS pricing_unit ) AS usage,
+        IF(LOWER(unit_type) LIKE "ram", "seconds", "hour") AS pricing_unit) AS usage,
       ARRAY<STRUCT<name STRING,
       amount FLOAT64>> [("Sustained Usage Discount",
         P_alloc_sud_credit_cost)] AS credits,
@@ -674,9 +689,9 @@ CREATE TEMP FUNCTION
       currency,
       currency_conversion_rate,
       STRUCT( 0.0 AS amount,
-        usage.unit AS unit,
+        IF(LOWER(cs.name) LIKE "committed usage discount:ram", "byte-seconds", "gibibyte hour") AS unit,
         0.0 AS amount_in_pricing_units,
-        usage.pricing_unit AS pricing_unit) AS usage,
+        IF(LOWER(cs.name) LIKE "committed usage discount: ram", "seconds", "hour") AS pricing_unit) AS usage,
       ARRAY<STRUCT<name STRING,
       amount FLOAT64>> [(cs.name,
         -1*cs.amount)] AS credits,
@@ -693,7 +708,146 @@ CREATE TEMP FUNCTION
         OR LOWER(sku.description) LIKE "%memory optimized ram%"
         OR LOWER(sku.description) LIKE "%commitment%"
         OR LOWER(sku.description) LIKE "%sustained%")
-      AND ARRAY_LENGTH(credits) > 0 )
+      AND ARRAY_LENGTH(credits) > 0 ),
+  project_name_table AS (
+    SELECT
+      project.id AS project_id,
+      project.name AS project_name
+    FROM
+      billing_export_table
+    GROUP BY
+      1,
+      2
+  ),
+  projects_with_names AS (
+    SELECT data_table.start_date AS start_day, name_table.project_id, data_table.total_slot_ms / (1000*60*60*24) AS slot_days, project_name
+    FROM `{billing_project_id}.{audit_logs_dataset_id}.{audit_logs_view_name}` AS data_table
+    JOIN project_name_table as name_table
+    ON name_table.project_id = data_table.project_id
+  ),
+  total_slot_per_day AS (
+      SELECT start_day AS start_day,
+      sum(slot_days) as num_slots
+      FROM projects_with_names
+      GROUP BY 1
+      ),
+  bq_billing_export_data_total_cost AS (
+      SELECT  CAST(DATE(usage_start_time, "UTC") AS STRING) AS start_day,
+      invoice.month as invoice_month,
+      sum(cost) AS total_cost
+      FROM billing_export_table
+      WHERE
+        service.description = 'BigQuery' AND
+        sku.description = 'BigQuery Reserved Capacity Fee'
+      GROUP BY
+      1,
+      2
+    ),
+  pricing_unit AS (
+    SELECT
+      s.start_day AS start_day,
+      c.invoice_month AS invoice_month,
+      c.total_cost/s.num_slots AS cost_per_slot
+    FROM
+      total_slot_per_day AS s
+    JOIN
+      bq_billing_export_data_total_cost AS c
+    ON
+      c.start_day = s.start_day
+    ),
+  cost_per_project AS (
+      SELECT
+        usage.start_day,
+        usage.project_id,
+        usage.project_name,
+        usage.slot_days,
+        p.cost_per_slot,
+        p.invoice_month,
+        usage.slot_days*p.cost_per_slot AS cost
+      FROM
+        projects_with_names AS usage
+      JOIN
+        pricing_unit AS p
+      ON
+        p.start_day = usage.start_day
+      ),
+  -- Gathering information like billing_account_id, service_id from the bq_billing_table
+  service_id_description AS (
+      SELECT billing_account_id AS billing_account_id,
+        service.id AS id,
+        service.description AS description
+      FROM billing_export_table
+      WHERE service.description = "BigQuery" AND sku.description = "BigQuery Reserved Capacity Fee"
+      LIMIT 1
+        ),
+   invoice_month_view as (
+      SELECT invoice.month as invoice_month,
+      (SELECT TIMESTAMP (CAST(DATE(usage_start_time, "America/Los_Angeles") AS STRING)) ) AS usage_start_time
+      FROM
+      billing_export_table AS bq_export
+      WHERE
+      service.description = "BigQuery" AND
+      sku.description = "BigQuery Reserved Capacity Fee"
+      GROUP BY 1, 2
+),
+cancelled_bq as (
+ SELECT
+      (SELECT billing_account_id FROM  service_id_description) AS billing_account_id,
+      STRUCT((SELECT id FROM  service_id_description) AS id, (SELECT description FROM  service_id_description) AS description) AS service,
+      STRUCT("Reattribution_Negation_BQ_Reserved_Capacity_Fee" AS id, "Reattribution_Negation_BQ_Reserved_Capacity_Fee" AS description) AS sku,
+      TIMESTAMP_TRUNC(bq_export.usage_start_time, DAY) AS usage_start_time,
+      TIMESTAMP_ADD(TIMESTAMP_TRUNC(bq_export.usage_end_time, DAY), INTERVAL ((3600*23)+3599) SECOND) AS usage_end_time,
+      STRUCT(bq_export.project.id AS id,  bq_export.project.name AS name, ARRAY<STRUCT<key STRING, value STRING>> [("is_corrected_data" , "1")] AS labels,  "" AS ancestry_numbers ) AS project,
+      ARRAY<STRUCT<name STRING, value STRING>> [] AS labels,
+      ARRAY<STRUCT<name STRING, value STRING>> [] AS system_labels,
+      STRUCT( "" AS location, "" AS country, "" AS region, "" AS zone) AS location,
+      CURRENT_TIMESTAMP() AS export_time,
+      -1*sum(cost) AS cost,
+      "USD" AS currency,
+      1.0 AS currency_conversion_rate,
+      STRUCT( sum(usage.amount) AS amount,
+      "seconds" AS unit,
+      sum(usage.amount_in_pricing_units) AS amount_in_pricing_units,
+      "month" AS pricing_unit) AS usage,
+      ARRAY<STRUCT<name STRING, amount FLOAT64>>[] AS credits,
+      STRUCT(mv.invoice_month as month) As invoice,
+      cost_type
+    FROM
+      billing_export_table AS bq_export
+    RIGHT JOIN
+     invoice_month_view AS mv
+   ON
+   (SELECT TIMESTAMP (CAST(DATE(bq_export.usage_start_time, "America/Los_Angeles") AS STRING)) ) = mv.usage_start_time
+    WHERE
+      service.description = "BigQuery" AND
+      sku.description = "BigQuery Reserved Capacity Fee"
+      GROUP BY usage_start_time, usage_end_time, cost_type, mv.invoice_month, bq_export.project.id, bq_export.project.name
+),
+corrected_bq as (
+  SELECT
+      (SELECT billing_account_id FROM  service_id_description) AS billing_account_id,
+      STRUCT((SELECT id FROM  service_id_description) AS id, (SELECT description FROM  service_id_description) AS description) AS service,
+      STRUCT("Reattribution_Addition_BQ_Reserved_Capacity_Fee" AS id, "Reattribution_Addition_BQ_Reserved_Capacity_Fee" AS description) AS sku,
+      TIMESTAMP(cp.start_day) AS usage_start_time,
+      TIMESTAMP_ADD(TIMESTAMP(cp.start_day), INTERVAL ((3600*23)+3599) SECOND) AS usage_end_time,
+      STRUCT( cp.project_id AS id,  cp.project_name AS name,  ARRAY<STRUCT<key STRING, value STRING>> [("is_corrected_data" , "1")] AS labels,"" as ancestry_numbers ) AS project,
+      ARRAY<STRUCT<name STRING, value STRING>> [] AS labels,
+      ARRAY<STRUCT<name STRING, value STRING>> [] AS system_labels,
+      STRUCT( "" AS location, "" AS country, "" AS region, "" AS zone) AS location,
+      CURRENT_TIMESTAMP() AS export_time,
+      (cp.cost) AS cost,
+      "USD" AS currency,
+      1.0 AS currency_conversion_rate,
+      STRUCT(cp.slot_days AS amount,
+      "slot days" AS unit,
+      0.0 AS amount_in_pricing_units,
+      "slot days" AS pricing_unit) AS usage,
+      ARRAY<STRUCT<name STRING, amount FLOAT64>>[] AS credits,
+      STRUCT(cp.invoice_month AS month) AS invoice,
+      "" AS cost_type
+  FROM
+       cost_per_project as cp
+       )
   SELECT
     *
   FROM
@@ -718,6 +872,16 @@ CREATE TEMP FUNCTION
     *
   FROM
     cancelled_cud_costs
+  UNION ALL
+  SELECT
+    *
+  FROM
+   cancelled_bq
+  UNION ALL
+  SELECT
+    *
+  FROM
+    corrected_bq
   UNION ALL
   SELECT
     *

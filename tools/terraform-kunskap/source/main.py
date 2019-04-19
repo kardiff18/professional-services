@@ -31,27 +31,47 @@ def file_to_string(sql_path):
         return sql_file.read()
 
 
+def create_view(bq_client):
+    """Creates BigQuery view to hold BigQuery audit log data.
+
+    Args:
+        bq_client: Object representing reference to a BigQuery Client
+    """
+    sql = file_to_string(config.config_vars['create_view_sql_path'])
+    sql = sql.format(**config.config_vars)
+
+    dataset_ref = bq_client.get_dataset(bigquery.DatasetReference(
+        project=config.config_vars['billing_project_id'],
+        dataset_id=config.config_vars['audit_logs_dataset_id']))
+    view_ref = dataset_ref.table(config.config_vars['audit_logs_view_name'])
+    view = bigquery.Table(view_ref)
+    view.view_query = sql
+
+    table_list = [table.table_id for table in list(bq_client.list_tables(dataset_ref))]
+    if config.config_vars['audit_logs_view_name'] in table_list:
+        bq_client.update_table(view, ['view_query'])
+
+    else:
+        bq_client.create_table(view)
+
+
 def execute_transformation_query(bq_client):
     """Executes transformation query to a new destination table.
     Args:
         bq_client: Object representing a reference to a BigQuery Client
     """
     dataset_ref = bq_client.get_dataset(bigquery.DatasetReference(
-        project=config.billing_project_id,
-        dataset_id=config.output_dataset_id))
-    table_ref = dataset_ref.table(config.output_table_name)
+        project=config.config_vars['billing_project_id'],
+        dataset_id=config.config_vars['output_dataset_id']))
+    table_ref = dataset_ref.table(config.config_vars['output_table_name'])
     job_config = bigquery.QueryJobConfig()
     job_config.destination = table_ref
     job_config.write_disposition = bigquery.WriteDisposition().WRITE_TRUNCATE
     job_config.time_partitioning = bigquery.TimePartitioning(
         field='usage_start_time',
         expiration_ms=None)
-    sql = Template(file_to_string(config.sql_file_path))
-    sql = sql.safe_substitute(billing_table=config.billing_project_id +
-                                            '.' + config.billing_dataset_id +
-                                            '.' + config.billing_table_name,
-                              allocation_method=config.allocation_method
-                              )
+    sql = file_to_string(config.config_vars['create_output_table_sql_file_path'])
+    sql = sql.format(**config.config_vars)
     logging.info('Attempting query on all dates...')
     # Execute Query
     query_job = bq_client.query(
@@ -60,6 +80,7 @@ def execute_transformation_query(bq_client):
 
     query_job.result()  # Waits for the query to finish
     logging.info('Transformation query complete. All partitions are updated.')
+
 
 def main(data, context):
     """Triggered from a message on a Cloud Pub/Sub topic.
@@ -75,6 +96,7 @@ def main(data, context):
         logging.info(log_message.safe_substitute(time=current_time))
 
         try:
+            create_view(bq_client)
             execute_transformation_query(bq_client)
 
         except Exception as error:

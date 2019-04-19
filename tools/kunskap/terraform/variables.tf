@@ -29,3 +29,7 @@ variable functioname {
 variable bucketname {
   default = "kunskap-terraform-bucket"
 }
+
+locals {
+  service_account = "${var.projectid}@appspot.gserviceaccount.com"
+}
