@@ -173,7 +173,8 @@ locals {
 to perform your queries on the BQ tables, enter it here.
 
 <h3>Install Terraform:</h3>
-To use Terraform, it should first be installed on your machine. It is distributed as a binary package and instructions to installation instructions can be found [here](https://learn.hashicorp.com/terraform/getting-started/install).
+To use Terraform, it should first be installed on your machine. 
+It is distributed as a binary package and instructions to installation instructions can be found [on this page](https://learn.hashicorp.com/terraform/getting-started/install)
 
 
 <h3>Create the GCP Resources:</h3>
