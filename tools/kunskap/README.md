@@ -127,6 +127,7 @@ Default is P_method_2_commitment_cost. Method 2 is the safest.
 
 
 <h3>Edit Terraform Config Variables</h3>
+
 ```
 variable projectid {
   default = "projectname"
@@ -164,6 +165,7 @@ locals {
   service_account = "${var.projectid}@appspot.gserviceaccount.com"
 }
 ```
+
 - frequency: This is how often your attribution will occur, in UNIX cron time.
 - bucketname: This is the name of the GCS bucket where the compressed source code for the Cloud Function will reside. 
 <b>You must rename this to a globally unique name, or else it will fail.</b> Suggested name: ‘projectid-kunskap-bucket’.
