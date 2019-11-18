@@ -34,18 +34,20 @@ Create a materialized table that stores data from the scheduled query.
 You can give it a custom name, we will be referring to it as **bigquery_audit_log**.
 
 ### 3. Copying the data source in Data Studio
-Log in to Data Studio and create a copy of [this](https://datastudio.google.com/open/1SGMv1DvjgpqblVL9GImfprvC2YhoKTE8) data source. Click [here](https://support.google.com/datastudio/answer/7421646?hl=en&ref_topic=6370331) for more information on copying data sources.
+Log in to Data Studio and create a copy of [this](https://datastudio.google.com/u/2/datasources/10MfID78E_Dyw_n9Cc6gDGUuGyRHrN6dh) data source. Click [here](https://support.google.com/datastudio/answer/7421646?hl=en&ref_topic=6370331) for more information on copying data sources.
+
+There are three derived fields need to be defined in the datasource.
+* totalCached: SUM(numCached);
+* pctCached: totalCached / COUNT(isCached);
+* table: CONCAT(referencedTables.projectId, '.',referencedTables.datasetId,'.',referencedTables.tableId);
 
 Rename the data source to a name of your choice. Click on "Edit Connection" to navigate to the project, dataset and table of your choice. It should correspond to the materialized table created as a result of step 2 above.
 
 Click on "Reconnect" located on the top right of the page.
 
 ### 4. Creating a dashboard in Data Studio
-Create a copy of [this](https://datastudio.google.com/open/1KCtV_QKYbGHxAJPlXg3Ec2WZCURhJjE3) Dashboard.
+Create a copy of [this](https://datastudio.google.com/u/2/reporting/1kwNFt05J8_GCju5TBH1v4IlBmmAU74Nu/page/nSaN) Dashboard.
 
 After clicking on the Copy button, you will find a message asking you to choose a new data source. Select the data source created in the step 3 above.
 
 Click on create report. Rename the report (dashboard) to a name of your choice.
-
-### 5. Final Step
-Confirm all the changes have been carried over successfully by comparing your dashboard and data source with the [template dashboard](https://datastudio.google.com/open/1KCtV_QKYbGHxAJPlXg3Ec2WZCURhJjE3) and the [template data source](https://datastudio.google.com/open/1SGMv1DvjgpqblVL9GImfprvC2YhoKTE8)
