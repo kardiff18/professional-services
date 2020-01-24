@@ -15,6 +15,7 @@
 
 provider "google" {
   project = var.project_id
+  version = "3.5.0"
 }
 
 # Enable APIs; Must be individual resources or else it will disable all other APIs for the project.
@@ -35,7 +36,7 @@ resource "google_project_service" "cfapi" {
 }
 
 resource "google_project_service" "bqapi" {
-  service = "bigquery-json.googleapis.com"
+  service = "bigquery.googleapis.com"
 }
 
 resource "google_project_service" "gaeapi" {
